@@ -34,6 +34,37 @@ def get_exchange_rate(base: str, target: str, amount: str) -> Tuple:
 def call_llm(textbox_input) -> Dict:
     """Make a call to the LLM with the textbox_input as the prompt.
        The output from the LLM should be a JSON (dict) with the base, amount and target"""
+       # 1. Define a list of callable tools for the model
+    tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "exchange_rate_function",
+                        "description": "Convert a given amount of money from one currency to another. Each currency will be represented as a 3-letter code",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "base": {
+                                    "type": "string",
+                                    "description": "The base or original currency.",
+                                },
+                                "target": {
+                                    "type": "string",
+                                    "description": "The target or converted currency",
+                                },
+                                "amount": {
+                                    "type": "string",
+                                    "description": "The amount of money to convert from the base currency.",
+                                },
+                            },
+                            "required": ["base", "target", "amount"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ]
+
+
     try:
         response = client.chat.completions.create(
         messages=[
@@ -49,26 +80,34 @@ def call_llm(textbox_input) -> Dict:
         temperature=1.0,
         top_p=1.0,
         max_tokens=1000,
-        model=model_name
-        )
-
-    
+        model=model_name,
+        tools = tools,
+        )    
     except Exception as e:
         print(f"Exception {e} for {text}")
     else:
-        return response.choices[0].message.content
+        return response#.choices[0].message.content
 
-def run_pipeline():
+def run_pipeline(user_input):
     """Based on textbox_input, determine if you need to use the tools (function calling) for the LLM.
     Call get_exchange_rate(...) if necessary"""
+    
+    response = call_llm(user_input)
+    #st.write(response)
 
-    if True: #tool_calls
+    if response.choices[0].finish_reason == "tool_calls":
         # Update this
-        st.write(f'{base} {amount} is {target} {exchange_response["conversion_result"]:.2f}')
+        response_args = json.loads(response.choices[0].message.tool_calls[0].function.arguments)
+        base = response_args['base']
+        target = response_args['target']
+        amount = response_args['amount']
+        _,_,_,conversion_result = get_exchange_rate(base, target, amount)
+        st.write(f'{base} {amount} is {target} {conversion_result}')
+        #st.write(base, target, amount)
 
-    elif True: #tools not used
+    elif response.choices[0].finish_reason == "stop":
         # Update this
-        st.write(f"(Function calling not used) and response from the model")
+        st.write(f"(Function calling not used) and {response.choices[0].message.content}")
     else:
         st.write("NotImplemented")
 
@@ -82,4 +121,5 @@ user_input = st.text_input("Enter the amount and currency: ")
 # Create a submit button
 if st.button("Submit"):
     # Display the content of the text box when submit is clicked
-    st.write(call_llm(user_input))
+    run_pipeline(user_input)
+    
